@@ -5,12 +5,8 @@ import {
   Check,
   CheckCircle2,
   ChevronLeft,
-  FileAudio2,
-  FileImage,
-  FileText,
   LockKeyhole,
   RefreshCw,
-  Video,
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
 import { useCreateCourseMediaSignedUrl } from '@workspace/api-client-react';
@@ -38,43 +34,23 @@ const kindLabels: Record<CourseContentKind, string> = {
   audio: 'صوت',
 };
 
-const kindIcons = {
-  video: Video,
-  image: FileImage,
-  text: FileText,
-  note: FileText,
-  audio: FileAudio2,
-};
-
 type FlatItem = {
   item: CourseContentItem;
   group: string;
+  levelId?: string;
+  sectionId?: string;
 };
-
-function formatCount(value: number) {
-  return new Intl.NumberFormat('ar').format(value);
-}
 
 function flattenCourse(course: Course): FlatItem[] {
   const result: FlatItem[] = [];
   [...course.items].sort((a, b) => a.sortOrder - b.sortOrder).forEach((item) => result.push({ item, group: 'مواد الدورة' }));
   [...course.levels].sort((a, b) => a.sortOrder - b.sortOrder).forEach((level) => {
-    [...level.items].sort((a, b) => a.sortOrder - b.sortOrder).forEach((item) => result.push({ item, group: level.title }));
+    [...level.items].sort((a, b) => a.sortOrder - b.sortOrder).forEach((item) => result.push({ item, group: level.title, levelId: level.id }));
     [...level.sections].sort((a, b) => a.sortOrder - b.sortOrder).forEach((section) => {
-      [...section.items].sort((a, b) => a.sortOrder - b.sortOrder).forEach((item) => result.push({ item, group: `${level.title} · ${section.title}` }));
+      [...section.items].sort((a, b) => a.sortOrder - b.sortOrder).forEach((item) => result.push({ item, group: `${level.title} · ${section.title}`, levelId: level.id, sectionId: section.id }));
     });
   });
   return result;
-}
-
-function allItems(course: Course) {
-  return flattenCourse(course).map(({ item }) => item);
-}
-
-function coursePercent(course: Course) {
-  const items = allItems(course);
-  if (!items.length) return 0;
-  return Math.round(items.filter((item) => item.progress?.completed).length / items.length * 100);
 }
 
 function updateItemProgress(
@@ -116,8 +92,13 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-export function LearnerCoursePage() {
-  const { courseId } = useParams<{ courseId?: string }>();
+export function LearnerContentViewerPage() {
+  const { courseId, levelId, sectionId, contentId } = useParams<{
+    courseId?: string;
+    levelId?: string;
+    sectionId?: string;
+    contentId?: string;
+  }>();
   const query = useLearnerCourses();
   const queryClient = useQueryClient();
   const saveProgress = useSaveLearnerProgress();
@@ -128,9 +109,9 @@ export function LearnerCoursePage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSavedPosition = useRef(-1);
   const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaForItem, setMediaForItem] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
   const [mediaError, setMediaError] = useState('');
-  const [selectedId, setSelectedId] = useState('');
   const [savingError, setSavingError] = useState('');
 
   useEffect(() => {
@@ -153,20 +134,36 @@ export function LearnerCoursePage() {
   const courses = useMemo(() => [...(query.data ?? [])].sort((a, b) => a.sortOrder - b.sortOrder), [query.data]);
   const course = courseId ? courses.find((entry) => entry.id === courseId) : courses[0];
   const flatItems = useMemo(() => course ? flattenCourse(course) : [], [course]);
-  const selected = flatItems.find(({ item }) => item.id === selectedId)?.item ?? flatItems[0]?.item;
-  const completedCount = course ? allItems(course).filter((item) => item.progress?.completed).length : 0;
-  const percent = course ? coursePercent(course) : 0;
-
-  useEffect(() => {
-    setSelectedId('');
-  }, [course?.id]);
+  const currentFlat = contentId
+    ? flatItems.find(({ item, levelId: itemLevelId, sectionId: itemSectionId }) => (
+      item.id === contentId &&
+      (sectionId
+        ? itemLevelId === levelId && itemSectionId === sectionId
+        : levelId
+          ? itemLevelId === levelId && !itemSectionId
+          : !itemLevelId && !itemSectionId)
+    ))
+    : undefined;
+  const selected = currentFlat?.item;
+  const level = course?.levels.find((entry) => entry.id === levelId);
+  const section = level?.sections.find((entry) => entry.id === sectionId);
+  const courseHref = course ? `/learn/course/${encodeURIComponent(course.id)}` : '/learn/course';
+  const levelHref = level
+    ? `${courseHref}/level/${encodeURIComponent(level.id)}`
+    : courseHref;
+  const sectionHref = section
+    ? `${levelHref}/section/${encodeURIComponent(section.id)}`
+    : levelHref;
+  const backHref = section ? sectionHref : level ? levelHref : courseHref;
 
   useEffect(() => {
     setMediaUrl('');
+    setMediaForItem('');
     setPosterUrl('');
     setMediaError('');
+    setSavingError('');
     lastSavedPosition.current = -1;
-    if (!selected || !['video', 'audio', 'image'].includes(selected.kind)) return;
+    if (!contentId || !selected || !['video', 'audio', 'image'].includes(selected.kind)) return;
     if (!secret) {
       setMediaError('انتهت جلسة التعلّم. سجّل الدخول مجددًا لفتح هذا المحتوى.');
       return;
@@ -175,7 +172,10 @@ export function LearnerCoursePage() {
     signedMedia.mutateAsync({
       data: { contentId: selected.id, learnerSessionSecret: secret, mediaType: 'content' },
     }).then((result) => {
-      if (!cancelled) setMediaUrl(result.signedUrl);
+      if (!cancelled) {
+        setMediaUrl(result.signedUrl);
+        setMediaForItem(selected.id);
+      }
     }).catch(() => {
       if (!cancelled) setMediaError('تعذّر فتح الملف المحمي. تحقق من اتصالك ثم حاول مجددًا.');
     });
@@ -189,7 +189,7 @@ export function LearnerCoursePage() {
       });
     }
     return () => { cancelled = true; };
-  }, [selected?.id, selected?.kind, selected?.storagePath, selected?.hasThumbnail, secret]);
+  }, [contentId, selected?.id, selected?.kind, selected?.storagePath, selected?.hasThumbnail, secret]);
 
   const savePosition = useCallback((positionSeconds: number, durationSeconds: number | null, markDone = false) => {
     if (!selected) return;
@@ -232,9 +232,14 @@ export function LearnerCoursePage() {
   function retryMedia() {
     if (!selected || !secret) return;
     setMediaError('');
+    setMediaUrl('');
+    setMediaForItem('');
     setPosterUrl('');
     signedMedia.mutateAsync({ data: { contentId: selected.id, learnerSessionSecret: secret, mediaType: 'content' } })
-      .then((result) => setMediaUrl(result.signedUrl))
+      .then((result) => {
+        setMediaUrl(result.signedUrl);
+        setMediaForItem(selected.id);
+      })
       .catch(() => setMediaError('تعذّر فتح الملف المحمي. حاول مرة أخرى.'));
     if (selected.kind === 'video' && selected.hasThumbnail) {
       signedThumbnailMedia.mutateAsync({ data: { contentId: selected.id, learnerSessionSecret: secret, mediaType: 'thumbnail' } })
@@ -251,69 +256,184 @@ export function LearnerCoursePage() {
     return <AppShell title="دورتي" audience="learner"><div className="course-pages" dir="rtl"><PageHeading eyebrow="رحلتك التعليمية" title="دورتي" subtitle="سنحاول تحميل محتواك مرة أخرى." /><section className="panel"><EmptyState title="تعذّر تحميل الدورة" description="تحقق من اتصالك ثم أعد تحميل محتوى الدورة." icon={BookOpen} /><div className="empty-state-action"><button type="button" className="button-soft" onClick={() => void query.refetch()}><RefreshCw size={15} /> إعادة المحاولة</button></div></section></div></AppShell>;
   }
 
-  if (!courseId && courses.length > 1) {
-    return <AppShell title="دورتي" audience="learner"><div className="course-pages" dir="rtl">
-      <PageHeading eyebrow="دليلك الدراسي" title="اختر دورة" subtitle="تابع من حيث توقفت، أو استكشف خطوة جديدة في مسارك." />
-      <div className="learner-course-picker">{courses.map((entry) => <Link key={entry.id} className="panel learner-course-card" href={`/learn/course/${encodeURIComponent(entry.id)}`}>
-        <div className="course-summary-number">{formatCount(coursePercent(entry))}٪</div><div><h2>{entry.name}</h2><p>{formatCount(allItems(entry).filter((item) => item.progress?.completed).length)} من {formatCount(allItems(entry).length)} مواد مكتملة</p><div className="course-progress-track"><span style={{ width: `${coursePercent(entry)}%` }} /></div></div><ChevronLeft size={18} />
-      </Link>)}</div>
-    </div></AppShell>;
-  }
-
-  if (!course) {
-    return <AppShell title="دورتي" audience="learner"><div className="course-pages" dir="rtl"><PageHeading eyebrow="دليلك الدراسي" title="دورتي" subtitle="سيظهر مسارك التعليمي هنا عند إتاحة دورة لك." /><section className="panel"><EmptyState title="لا توجد دورة متاحة بعد" description="لم تُنشر دورة لحسابك بعد. ستظهر هنا المواد فور إتاحتها." icon={BookOpen} /></section></div></AppShell>;
-  }
-
-  const currentFlat = flatItems.find(({ item }) => item.id === selected?.id);
-  const KindIcon = selected ? kindIcons[selected.kind] : FileText;
+  const isValidSelection = Boolean(course && selected && contentId);
+  const mediaIsReady = Boolean(selected && mediaUrl && mediaForItem === selected.id);
 
   return (
-    <AppShell title="دورتي" audience="learner">
+    <AppShell title={selected?.title ?? 'المادة'} audience="learner">
       <div className="course-pages" dir="rtl">
-        <div className="course-breadcrumbs"><Link href="/learn">الرئيسية</Link><ChevronLeft size={14} /><span>دورتي</span></div>
-        <section className="learner-course-hero">
-          <div className="learner-course-hero-copy"><div className="eyebrow">مسارك بخطوات صغيرة</div><h1>{course.name}</h1><p>{completedCount ? `أكملت ${formatCount(completedCount)} من ${formatCount(flatItems.length)} مواد. تقدّمك يتراكم مع كل خطوة.` : 'ابدأ من أي مادة تناسبك. يمكنك التعلّم بترتيبك الخاص.'}</p></div>
-          <div className="learner-course-progress" aria-label={`التقدم ${percent} بالمئة`}><span>{formatCount(percent)}٪</span><small>مكتمل</small></div>
-        </section>
-        {savingError && <InlineAlert>{savingError}</InlineAlert>}
-        {flatItems.length === 0 ? (
-          <section className="panel"><EmptyState title="المحتوى قيد التجهيز" description="لم تتم إضافة مواد لهذه الدورة بعد. ستظهر هنا بمجرد أن تصبح جاهزة." icon={BookOpen} /></section>
+        {!isValidSelection || !course || !selected ? (
+          <section className="panel">
+            <EmptyState
+              title="المادة غير متاحة"
+              description="قد يكون المحتوى قد تغيّر. ارجع إلى المسار واختر مادة متاحة."
+              icon={BookOpen}
+            />
+            <div className="empty-state-action">
+              <Link className="button-primary" href={backHref}>العودة إلى المسار</Link>
+            </div>
+          </section>
         ) : (
-          <div
-            className="learner-content-layout"
-            onCopy={(event) => event.preventDefault()}
-            onCut={(event) => event.preventDefault()}
-            onDragStart={(event) => event.preventDefault()}
-          >
-            <section className="panel learner-material">
-              <div className="learner-material-header"><div><div className="eyebrow">{currentFlat?.group} · {selected ? kindLabels[selected.kind] : ''}</div><h2>{selected?.title}</h2></div>{selected?.progress?.completed && <span className="course-status"><Check size={14} /> مكتملة</span>}</div>
-              {selected && ['video', 'audio', 'image'].includes(selected.kind) ? (
-                mediaError ? <div className="learner-media-frame"><div className="learner-media-placeholder"><LockKeyhole size={25} /><strong>{mediaError}</strong><button type="button" className="button-soft" onClick={retryMedia}><RefreshCw size={14} /> إعادة المحاولة</button></div></div> :
-                !mediaUrl ? <div className="learner-media-frame"><div className="learner-media-placeholder"><LockKeyhole size={23} /><strong>جارٍ فتح المحتوى بأمان…</strong></div></div> :
-                <div className="learner-media-frame" onContextMenu={(event) => event.preventDefault()}>
-                   {selected.kind === 'video' && <video ref={videoRef} src={mediaUrl} poster={posterUrl || undefined} controls controlsList="nodownload noremoteplayback" disablePictureInPicture disableRemotePlayback playsInline preload="metadata" onLoadedMetadata={(event) => { const progress = selected.progress?.positionSeconds ?? 0; if (progress > 0) event.currentTarget.currentTime = progress; }} onTimeUpdate={(event) => savePosition(event.currentTarget.currentTime, Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null)} onPause={(event) => savePosition(event.currentTarget.currentTime, Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null)} onEnded={(event) => savePosition(event.currentTarget.duration, event.currentTarget.duration, true)} />}
-                  {selected.kind === 'audio' && <audio ref={audioRef} src={mediaUrl} controls controlsList="nodownload noremoteplayback" preload="metadata" onLoadedMetadata={(event) => { const progress = selected.progress?.positionSeconds ?? 0; if (progress > 0) event.currentTarget.currentTime = progress; }} onTimeUpdate={(event) => savePosition(event.currentTarget.currentTime, Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null)} onPause={(event) => savePosition(event.currentTarget.currentTime, Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null)} onEnded={(event) => savePosition(event.currentTarget.duration, event.currentTarget.duration, true)} />}
-                  {selected.kind === 'image' && <img src={mediaUrl} alt={selected.title} draggable={false} />}
+          <>
+            <nav className="course-breadcrumbs learner-viewer-breadcrumbs" aria-label="مسار المادة">
+              <Link href="/learn/course">دوراتي</Link>
+              <ChevronLeft size={14} aria-hidden="true" />
+              <Link href={courseHref}>{course.name}</Link>
+              {level ? (
+                <>
+                  <ChevronLeft size={14} aria-hidden="true" />
+                  <Link href={levelHref}>{level.title}</Link>
+                </>
+              ) : null}
+              {section ? (
+                <>
+                  <ChevronLeft size={14} aria-hidden="true" />
+                  <Link href={sectionHref}>{section.title}</Link>
+                </>
+              ) : null}
+              <ChevronLeft size={14} aria-hidden="true" />
+              <span>{selected.title}</span>
+            </nav>
+            <PageHeading
+              eyebrow={`${currentFlat?.group ?? 'محتوى الدورة'} · ${kindLabels[selected.kind]}`}
+              title={selected.title}
+              subtitle="تابع المادة هنا، وسيُحفظ تقدمك أثناء التعلّم."
+            />
+            {savingError && <InlineAlert>{savingError}</InlineAlert>}
+            <div
+              className="learner-content-layout learner-viewer-layout"
+              onCopy={(event) => event.preventDefault()}
+              onCut={(event) => event.preventDefault()}
+              onDragStart={(event) => event.preventDefault()}
+            >
+              <section className="panel learner-material">
+                <div className="learner-material-header">
+                  <div>
+                    <div className="eyebrow">{kindLabels[selected.kind]}</div>
+                    <h2>{selected.title}</h2>
+                  </div>
+                  {selected.progress?.completed ? (
+                    <span className="course-status"><Check size={14} /> مكتملة</span>
+                  ) : null}
                 </div>
-              ) : <div className="learner-material-body">{selected?.body || 'ابدأ بالقراءة بهدوء، ثم علّم المادة مكتملة عندما تنتهي.'}</div>}
-              {selected?.supplementalNote?.trim() && <aside className="learner-supplemental-note"><strong>ملاحظة إضافية</strong><p>{selected.supplementalNote}</p></aside>}
-              {selected?.kind === 'video' && selected.progress?.positionSeconds ? <p className="course-muted-note">آخر موضع وصلت إليه: {formatTime(selected.progress.positionSeconds)}{selected.progress.durationSeconds ? ` من ${formatTime(selected.progress.durationSeconds)}` : ''}</p> : null}
-              <div className="learner-material-actions"><span className="course-muted-note">تعلّم بترتيبك، وتقدّمك محفوظ تلقائيًا.</span><button type="button" className={`button-primary learner-done-button ${selected?.progress?.completed ? 'done' : ''}`} disabled={!selected || saveProgress.isPending} onClick={() => selected && markComplete(selected)}>{selected?.progress?.completed ? <><CheckCircle2 size={16} /> مكتملة</> : <><Check size={16} /> علّمها مكتملة</>}</button></div>
-            </section>
-            <aside className="panel learner-tree" aria-label="محتويات الدورة">
-              <h2>محتوى الدورة <span className="course-muted-note">({formatCount(flatItems.length)})</span></h2>
-              {flatItems.map(({ item, group }, index) => {
-                const Icon = kindIcons[item.kind];
-                const isSelected = selected?.id === item.id;
-                return <div key={item.id}>
-                  {(index === 0 || flatItems[index - 1].group !== group) && <div className="learner-tree-label">{group}</div>}
-                   <button type="button" className={`learner-tree-item ${isSelected ? 'active' : ''} ${item.progress?.completed ? 'completed' : ''}`} onClick={() => { setSelectedId(item.id); setMediaUrl(''); setPosterUrl(''); setMediaError(''); }}>
-                    <span className="tree-check">{item.progress?.completed ? <Check size={13} /> : <Icon size={13} />}</span><span>{item.title}</span><ChevronLeft size={13} />
+                {['video', 'audio', 'image'].includes(selected.kind) ? (
+                  mediaError ? (
+                    <div className="learner-media-frame">
+                      <div className="learner-media-placeholder">
+                        <LockKeyhole size={25} />
+                        <strong>{mediaError}</strong>
+                        <button type="button" className="button-soft" onClick={retryMedia}>
+                          <RefreshCw size={14} /> إعادة المحاولة
+                        </button>
+                      </div>
+                    </div>
+                  ) : !mediaIsReady ? (
+                    <div className="learner-media-frame">
+                      <div className="learner-media-placeholder">
+                        <LockKeyhole size={23} />
+                        <strong>جارٍ فتح المحتوى بأمان…</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="learner-media-frame" onContextMenu={(event) => event.preventDefault()}>
+                      {selected.kind === 'video' ? (
+                        <video
+                          ref={videoRef}
+                          src={mediaUrl}
+                          poster={posterUrl || undefined}
+                          controls
+                          controlsList="nodownload noremoteplayback"
+                          disablePictureInPicture
+                          disableRemotePlayback
+                          playsInline
+                          preload="metadata"
+                          onLoadedMetadata={(event) => {
+                            const progress = selected.progress?.positionSeconds ?? 0;
+                            if (progress > 0) event.currentTarget.currentTime = progress;
+                          }}
+                          onTimeUpdate={(event) => savePosition(
+                            event.currentTarget.currentTime,
+                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                          )}
+                          onPause={(event) => savePosition(
+                            event.currentTarget.currentTime,
+                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                          )}
+                          onEnded={(event) => savePosition(
+                            event.currentTarget.duration,
+                            event.currentTarget.duration,
+                            true,
+                          )}
+                        />
+                      ) : null}
+                      {selected.kind === 'audio' ? (
+                        <audio
+                          ref={audioRef}
+                          src={mediaUrl}
+                          controls
+                          controlsList="nodownload noremoteplayback"
+                          preload="metadata"
+                          onLoadedMetadata={(event) => {
+                            const progress = selected.progress?.positionSeconds ?? 0;
+                            if (progress > 0) event.currentTarget.currentTime = progress;
+                          }}
+                          onTimeUpdate={(event) => savePosition(
+                            event.currentTarget.currentTime,
+                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                          )}
+                          onPause={(event) => savePosition(
+                            event.currentTarget.currentTime,
+                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                          )}
+                          onEnded={(event) => savePosition(
+                            event.currentTarget.duration,
+                            event.currentTarget.duration,
+                            true,
+                          )}
+                        />
+                      ) : null}
+                      {selected.kind === 'image' ? (
+                        <img src={mediaUrl} alt={selected.title} draggable={false} />
+                      ) : null}
+                    </div>
+                  )
+                ) : (
+                  <div className="learner-material-body">
+                    {selected.body || 'ابدأ بالقراءة بهدوء، ثم علّم المادة مكتملة عندما تنتهي.'}
+                  </div>
+                )}
+                {selected.supplementalNote?.trim() ? (
+                  <aside className="learner-supplemental-note">
+                    <strong>ملاحظة إضافية</strong>
+                    <p>{selected.supplementalNote}</p>
+                  </aside>
+                ) : null}
+                {selected.kind === 'video' && selected.progress?.positionSeconds ? (
+                  <p className="course-muted-note">
+                    آخر موضع وصلت إليه: {formatTime(selected.progress.positionSeconds)}
+                    {selected.progress.durationSeconds
+                      ? ` من ${formatTime(selected.progress.durationSeconds)}`
+                      : ''}
+                  </p>
+                ) : null}
+                <div className="learner-material-actions">
+                  <span className="course-muted-note">تعلّم بترتيبك، وتقدّمك محفوظ تلقائيًا.</span>
+                  <button
+                    type="button"
+                    className={`button-primary learner-done-button ${selected.progress?.completed ? 'done' : ''}`}
+                    disabled={saveProgress.isPending}
+                    onClick={() => markComplete(selected)}
+                  >
+                    {selected.progress?.completed ? (
+                      <><CheckCircle2 size={16} /> مكتملة</>
+                    ) : (
+                      <><Check size={16} /> علّمها مكتملة</>
+                    )}
                   </button>
-                </div>;
-              })}
-            </aside>
-          </div>
+                </div>
+              </section>
+            </div>
+          </>
         )}
       </div>
     </AppShell>

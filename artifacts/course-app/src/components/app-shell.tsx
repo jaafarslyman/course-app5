@@ -3,7 +3,6 @@ import {
   BookOpen,
   KeyRound,
   LayoutDashboard,
-  LibraryBig,
   LogOut,
   MessagesSquare,
   UsersRound,
@@ -21,7 +20,6 @@ const adminNavigation = [
 const learnerNavigation = [
   { href: '/learn', label: 'الرئيسية', icon: LayoutDashboard },
   { href: '/learn/course', label: 'دورتي', icon: BookOpen },
-  { href: '/learn/content', label: 'المحتوى', icon: LibraryBig },
   { href: '/learn/community', label: 'مساحة المجموعة', icon: MessagesSquare },
 ];
 

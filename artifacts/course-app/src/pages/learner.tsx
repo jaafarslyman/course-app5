@@ -6,7 +6,7 @@ import { useLearnerSession } from '@/lib/learner-session-context';
 import { useLearnerCourses } from '@/lib/course-api';
 import type { Course, CourseContentItem } from '@/lib/course-types';
 import { GroupChatPage } from '@/pages/group-chat';
-import { LearnerCoursePage as LearnerCoursePlayerPage } from '@/pages/course-player';
+import { LearnerContentViewerPage } from '@/pages/course-player';
 
 function flattenItems(course: Course): CourseContentItem[] {
   return [
@@ -95,29 +95,10 @@ export function LearnerHomePage() {
   );
 }
 
-export function LearnerCoursePage() {
-  return (
-    <AppShell title="دورتي" audience="learner">
-      <PageHeading
-        eyebrow="دليلك الدراسي"
-        title="المستويات والدروس"
-        subtitle="ستظهر هنا مستويات الدورة وأقسامها وموادها."
-      />
-      <section className="panel">
-        <EmptyState
-          title="لم تتم إضافة محتوى بعد"
-          description="سيظهر تقدمك والدروس المتاحة بعد تجهيز هيكل الدورة."
-          icon={BookOpen}
-        />
-      </section>
-    </AppShell>
-  );
-}
-
 export function LearnerCommunityPage() {
   return <GroupChatPage audience="learner" />;
 }
 
 export function LearnerContentPage() {
-  return <LearnerCoursePlayerPage />;
+  return <LearnerContentViewerPage />;
 }

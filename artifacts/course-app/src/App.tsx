@@ -18,11 +18,11 @@ import {
   LearnerContentPage,
   LearnerHomePage,
 } from '@/pages/learner';
+import { LearnerCourseCatalogPage } from '@/pages/learner-course-catalog';
 import {
   AdminCoursesIndexPage,
   CourseBuilderPage,
 } from '@/pages/course-admin';
-import { LearnerCoursePage } from '@/pages/course-player';
 import { LearnerSessionProvider, useLearnerSession } from '@/lib/learner-session-context';
 import {
   errorCode,
@@ -78,19 +78,44 @@ export default function App() {
               <LearnerHomePage />
             </RequireLearner>
           </Route>
-          <Route path="/learn/course">
+          <Route path="/learn/course/:courseId/level/:levelId/section/:sectionId/content/:contentId">
             <RequireLearner>
-              <LearnerCoursePage />
+              <LearnerContentPage />
+            </RequireLearner>
+          </Route>
+          <Route path="/learn/course/:courseId/level/:levelId/content/:contentId">
+            <RequireLearner>
+              <LearnerContentPage />
+            </RequireLearner>
+          </Route>
+          <Route path="/learn/course/:courseId/content/:contentId">
+            <RequireLearner>
+              <LearnerContentPage />
+            </RequireLearner>
+          </Route>
+          <Route path="/learn/course/:courseId/level/:levelId/section/:sectionId">
+            <RequireLearner>
+              <LearnerCourseCatalogPage />
+            </RequireLearner>
+          </Route>
+          <Route path="/learn/course/:courseId/level/:levelId">
+            <RequireLearner>
+              <LearnerCourseCatalogPage />
             </RequireLearner>
           </Route>
           <Route path="/learn/course/:courseId">
             <RequireLearner>
-              <LearnerCoursePage />
+              <LearnerCourseCatalogPage />
+            </RequireLearner>
+          </Route>
+          <Route path="/learn/course">
+            <RequireLearner>
+              <LearnerCourseCatalogPage />
             </RequireLearner>
           </Route>
           <Route path="/learn/content">
             <RequireLearner>
-              <LearnerContentPage />
+              <LearnerCourseCatalogPage />
             </RequireLearner>
           </Route>
           <Route path="/learn/community">
