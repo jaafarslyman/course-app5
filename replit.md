@@ -40,6 +40,7 @@ Learners enter with an email and one-time access code, study course content, tra
 ## User preferences
 
 - Supabase environment variables will be added manually by the user.
+- Design the app for mobile phones first; keep desktop layouts usable.
 
 ## Gotchas
 

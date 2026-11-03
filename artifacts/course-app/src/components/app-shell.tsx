@@ -43,6 +43,10 @@ export function AppShell({
   const [location, setLocation] = useLocation();
   const navigation =
     audience === 'learner' ? learnerNavigation : adminNavigation;
+  const isActive = (href: string) =>
+    location === href ||
+    (href !== '/admin' && href !== '/learn' && location.startsWith(`${href}/`)) ||
+    (href === '/learn/course' && (location.startsWith('/learn/course/') || location === '/learn/content'));
   const handleSignOut =
     audience === 'admin'
       ? onSignOut ??
@@ -61,7 +65,7 @@ export function AppShell({
             <Link
               key={href}
               href={href}
-              className={`nav-link ${location === href ? 'active' : ''}`}
+              className={`nav-link ${isActive(href) ? 'active' : ''}`}
               data-testid={`link-${href.replaceAll('/', '-').slice(1)}`}
             >
               <Icon aria-hidden="true" />
@@ -114,7 +118,7 @@ export function AppShell({
           <Link
             key={href}
             href={href}
-            className={`nav-link ${location === href ? 'active' : ''}`}
+            className={`nav-link ${isActive(href) ? 'active' : ''}`}
             data-testid={`mobile-link-${href.replaceAll('/', '-').slice(1)}`}
           >
             <Icon aria-hidden="true" />
