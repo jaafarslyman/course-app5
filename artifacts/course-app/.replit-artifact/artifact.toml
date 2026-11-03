@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Lughati Course App"
+description = "An Arabic-first English-learning app for learners and course admins, with progress tracking, lessons, group chat, and a Supabase-backed management console."
+version = "1.0.0"
+id = "artifacts/course-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20216
+
+[services.development]
+run = "pnpm --filter @workspace/course-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/course-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/course-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20216"
+BASE_PATH = "/"

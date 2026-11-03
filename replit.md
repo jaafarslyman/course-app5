@@ -1,45 +1,52 @@
-# [Project name]
+# Lughati Course App
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An Arabic-first English-learning app with learner access, course progress, lessons, group chat, and a Supabase-backed admin console.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/course-app run dev` — run the web app
+- `pnpm --filter @workspace/api-server run dev` — run the API server
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Supabase setup and SQL scripts: `artifacts/course-app/docs/supabase-setup.md` and `artifacts/course-app/supabase/`
+- Required environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`
+- Keep `SUPABASE_SERVICE_ROLE_KEY` private and server-only; never give it a `VITE_` prefix.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- React, Vite, TypeScript, Tailwind CSS, and Wouter
+- Supabase Auth, database, storage, and realtime features
+- Express API for short-lived protected course/chat media links
+- OpenAPI + Orval for API types and validation
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/course-app/src/` — learner and admin app
+- `artifacts/course-app/supabase/` — Supabase schema, course, and chat SQL
+- `artifacts/course-app/docs/supabase-setup.md` — environment and Supabase setup
+- `lib/api-spec/openapi.yaml` — shared API contract
+- `artifacts/api-server/src/routes/` — media signing and health routes
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Supabase is the app's data and authentication provider; do not migrate its schema to the workspace PostgreSQL database.
+- The browser receives only the Supabase URL and anon key; the API server uses the private service-role key for signing media links.
+- Private media URLs are short-lived access controls, not DRM. A browser app cannot prevent operating-system screenshots or screen recordings.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Learners enter with an email and one-time access code, study course content, track progress, and participate in a shared community. Administrators manage learners, courses, lessons, and community settings.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Supabase environment variables will be added manually by the user.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run the SQL scripts in the documented order before using Supabase-backed screens.
+- `VITE_` values are included in the web bundle and must not contain private keys.
 
 ## Pointers
 
+- `artifacts/course-app/docs/product-requirements.txt` — product scope
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
